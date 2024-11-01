@@ -7,6 +7,8 @@ import os
 def load_model():
     load_dotenv()
 
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")   
+
     storage_client = storage.Client()
 
         # Accede al bucket y descarga el archivo

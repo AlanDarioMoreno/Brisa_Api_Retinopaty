@@ -3,11 +3,14 @@ from torchvision import transforms
 import torch
 import cv2
 from PIL import Image
-from load_model import load_model
 from dotenv import load_dotenv
 import os
 from Model import Model
+from modelInicialization import modelInicialization
+import warnings
 
+#Ignora un warning de seguridad de Pytorch
+warnings.filterwarnings("ignore", category=FutureWarning) 
 
 IMAGE_SIZE = 512
 RETINO_CLASS= 5
@@ -17,22 +20,9 @@ RETINO_NORETINO= 2
 app = Flask(__name__)
 load_dotenv()
 
-try:
-    modelClasification = load_model(os.getenv("model_name"),os.getenv("local_model_path"))
-except Exception as e:
-    print(f"Error al cargar el modelo: {e}")
-
-modelClasification = Model(num_classes=RETINO_CLASS, model_path=os.getenv("local_model_path"))
-modelClasification.eval()  # Poner el modelo en modo evaluación
-
-
-try:
-    modelRetinoNoRetino = load_model(os.getenv("model_name_RE_NORE"),os.getenv("local_model_path_retina_NoRetina"))
-except Exception as e:
-    print(f"Error al cargar el modelo: {e}")
-
-modelRetinoNoRetino = Model(num_classes=RETINO_NORETINO, model_path=os.getenv("local_model_path_retina_NoRetina"))
-modelRetinoNoRetino.eval()  # Poner el modelo en modo evaluación
+#Se instancian los modelos de clasificacion y retina/No Retina
+modelClasification = modelInicialization(os.getenv("model_name"),os.getenv("local_model_path"),RETINO_CLASS)
+modelRetinoNoRetino= modelInicialization(os.getenv("model_name_RE_NORE"),os.getenv("local_model_path_retina_NoRetina"),RETINO_NORETINO)
 
 preprocess = transforms.Compose([
     transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),

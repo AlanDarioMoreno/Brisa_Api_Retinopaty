@@ -1,13 +1,12 @@
 from flask import Flask, request, jsonify
 from torchvision import transforms
 import torch
-import cv2
 from PIL import Image
 from dotenv import load_dotenv
-import numpy as np
+from GaussianBlur import GaussianBlur
 import os
-from Model import Model
 from modelInicialization import modelInicialization
+from classDescription import classDescription
 import warnings
 
 #Ignora un warning de seguridad de Pytorch
@@ -17,56 +16,36 @@ IMAGE_SIZE = 512
 RETINO_CLASS= 5
 RETINO_NORETINO= 2
 RETINO_FILTRO= 3
-
-def get_retinopathy_description(clase):
-    switch = {
-        0: ["TIENE RETINOPATÍA", "LEVE"],
-        1: ["TIENE RETINOPATÍA", "MODERADA"],
-        2: ["NO TIENE RETINOPATÍA", "NO_DR"],
-        3: ["TIENE RETINOPATÍA", "PROLIFERADA"],
-        4: ["TIENE RETINOPATÍA", "SEVERA"]
-    }
-    return switch.get(clase, ["Clase no válida", "Descripción no válida"])
+CONFIDENCE_MODEL1 = 0.98
+CONFIDENCE_MODEL2 = 0.39
 
 app = Flask(__name__)
 load_dotenv()
 
-#Se instancian los modelos de clasificacion y retina/No Retina
+#Se instancian los modelos
 modelRetinoNoRetino= modelInicialization(os.getenv("model_name_RE_NORE"),os.getenv("local_model_path_retina_NoRetina"),RETINO_NORETINO)
 modelMild= modelInicialization(os.getenv("model_name_filtroGaussian"),os.getenv("local_model_path_filtroGaussian"),RETINO_FILTRO)
 modelClasification = modelInicialization(os.getenv("model_name"),os.getenv("local_model_path"),RETINO_CLASS)
 
-# Definir la transformación personalizada para aplicar Gaussian Blur
-class GaussianBlurTransform:
-    def __init__(self, sigmaX=10):
-        self.sigmaX = sigmaX
-
-    def __call__(self, image):
-        # Convertir la imagen a un array de NumPy
-        image_np = np.array(image)
-        # Aplicar el filtro Gaussian Blur en OpenCV
-        blurred_image = cv2.addWeighted(image_np, 4, cv2.GaussianBlur(image_np, (0, 0), self.sigmaX), -4, 128)
-        # Convertir la imagen de nuevo a formato PIL
-        blurred_image = Image.fromarray(blurred_image)
-        return blurred_image
-
 preprocess = transforms.Compose([
     transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) # Normalizacion de color RGB y desviacion del modelo RestNet50
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) # Normalizacion de color RGB y desviacion del modelo Preentrenado RestNet50
 ])
 
 preprocess_gaussian = transforms.Compose([
     transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-    GaussianBlurTransform(),
+    GaussianBlur(),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) # Normalizacion de color RGB y desviacion del modelo RestNet50
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) # Normalizacion de color RGB y desviacion del modelo Preentrenado RestNet50
 ])
 
 @app.route('/', methods=['GET'])
 def home():
-    return "Hola, soy la home."
+    return "SERVER OK"
 
+
+#Ruta de prediccion de clasificación
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
@@ -80,9 +59,8 @@ def predict():
 
         img = Image.open(file.stream).convert('RGB')
        
-        processed_img = preprocess(img).unsqueeze(0)  # Transformaciones y batch dimension
+        processed_img = preprocess(img).unsqueeze(0) 
 
-        # 4. Realizar la predicción
          # Predicción con el modelo 1
         with torch.no_grad():
             output1 = modelClasification(processed_img)
@@ -93,9 +71,9 @@ def predict():
         print(output1)
 
         # Si la predicción del modelo 1 es clase 2 con confianza menor a 98%, usar modelo 2
-        if pred1.item() == 2 and confidence1.item() < 0.98:
+        if pred1.item() == 2 and confidence1.item() < CONFIDENCE_MODEL1:
             print("Evaluando con modelo 2 debido a baja confianza en modelo 1 para clase 2.")
-            preprocess_gaussian1 = preprocess_gaussian(img).unsqueeze(0) #En esta línea hay un error
+            preprocess_gaussian1 = preprocess_gaussian(img).unsqueeze(0)
             print("1")
             output2 = modelMild(preprocess_gaussian1)
             print("2")
@@ -105,7 +83,7 @@ def predict():
             print(f"Modelo 2: Predicción {pred2.item()}, Confianza {confidence2.item():.2f}")
 
             # Decidir predicción final
-            if confidence2.item() > 0.39:
+            if confidence2.item() > CONFIDENCE_MODEL2:
                 final_prediction = pred2.item()
             else:
                 final_prediction = pred1.item()
@@ -114,13 +92,14 @@ def predict():
 
         print(f"Predicción final: Clase {final_prediction}")
 
-        descripcion = get_retinopathy_description(final_prediction)  
+        descripcion = classDescription(final_prediction)  
 
         return f"{descripcion}"
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-    
+
+#Ruta de prediccion de Retina o No Retina
 @app.route('/verify', methods=['POST'])
 def verify():
     try:
@@ -134,9 +113,8 @@ def verify():
 
         img = Image.open(file.stream).convert('RGB')
        
-        processed_img = preprocess(img).unsqueeze(0)  # Transformaciones y batch dimension
+        processed_img = preprocess(img).unsqueeze(0) 
 
-        # 4. Realizar la predicción
         with torch.no_grad():
             prediction = modelRetinoNoRetino(processed_img)
 

@@ -70,7 +70,7 @@ def predict():
         print(f"Modelo 1: Predicción {pred1.item()}, Confianza {confidence1.item():.2f}")
         print(output1)
 
-        # Si la predicción del modelo 1 es clase 2 con confianza menor a 98%, usar modelo 2
+        # Si la predicción del modelo 1 es clase 2 con confianza menor aL Umbral, usar modelo 2
         if pred1.item() == 2 and confidence1.item() < CONFIDENCE_MODEL1:
             print("Evaluando con modelo 2 debido a baja confianza en modelo 1 para clase 2.")
             preprocess_gaussian1 = preprocess_gaussian(img).unsqueeze(0)
@@ -94,7 +94,7 @@ def predict():
 
         descripcion = classDescription(final_prediction)  
 
-        return f"{descripcion}"
+        return descripcion
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
